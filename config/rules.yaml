@@ -1,0 +1,104 @@
+# config/rules.yaml
+# Jarvis baseline rules v1 — the safety floor.
+# Owner: TT (Mark). Only TT may approve changes to this file.
+# Every rule here is enforced by code, not by documentation alone.
+
+version: 1
+owner: TT
+timezone: Australia/Melbourne
+
+# ---------------------------------------------------------------
+# Rule governance (how rules are added / removed)
+# ---------------------------------------------------------------
+rule_policy:
+  max_rules: 15                 # hard cap; merge or delete before adding
+  new_rule_requires:
+    - trigger_evidence          # the real incident or evidence that caused it
+    - problem_statement         # one sentence: what bad thing it prevents
+    - review_date               # rule is deleted if unused by this date
+  change_process: proposal_then_TT_approval   # agent may propose, never apply
+
+# ---------------------------------------------------------------
+# Baseline rules (R1–R5)
+# ---------------------------------------------------------------
+rules:
+
+  - id: R1
+    name: approval_required
+    enforced_by: app/core/approval.py
+    problem_statement: Prevent irreversible or external actions without TT's consent.
+    params:
+      actions_requiring_approval:
+        - write_production
+        - delete_any
+        - send_external_message     # email, posts, messages to anyone except TT
+        - spend_money
+        - modify_config             # includes this file, models.yaml, tools.yaml
+      channel: discord_dm_to_owner
+      timeout_minutes: 30
+      on_timeout: deny               # silence = no
+    review_date: 2027-01-23
+
+  - id: R2
+    name: secret_redaction
+    enforced_by: app/safety/redact.py
+    problem_statement: Keep API keys and passwords out of logs, replies and model prompts.
+    params:
+      redact_env_values: true        # any value loaded from .env is masked
+      patterns:
+        - 'sk-[A-Za-z0-9_\-]{16,}'
+        - 'sk-or-[A-Za-z0-9_\-]{16,}'
+        - '[A-Za-z0-9_\-]{24}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27,}'   # Discord token shape
+      replacement: '[REDACTED]'
+    review_date: 2027-01-23
+
+  - id: R3
+    name: daily_budget
+    enforced_by: app/safety/budget.py
+    problem_statement: Stop a bug or loop from burning API credit.
+    params:
+      currency: USD
+      daily_limit: 2.00
+      warn_at_ratio: 0.80            # Discord warning at US$1.60
+      reset: daily_midnight_local
+      on_limit: block_cloud_calls    # reply "today's budget is used up"
+      unlock: owner_command_or_next_reset
+      cost_source: openrouter_usage_field   # use real cost returned per call
+    secondary_guard: Set a hard credit limit in the OpenRouter dashboard as well.
+    review_date: 2027-01-23
+
+  - id: R4
+    name: kill_switch
+    enforced_by: app/safety/killswitch.py
+    problem_statement: TT can halt all agent activity instantly.
+    params:
+      stop_command: /stop
+      resume_command: /resume
+      allowed_user: OWNER_DISCORD_ID # env var; nobody else can stop or resume
+      on_stop:
+        - cancel_pending_tasks
+        - reject_new_orders
+        - log_event
+      state_persists_across_restart: true
+    review_date: 2027-01-23
+
+  - id: R5
+    name: action_logging
+    enforced_by: app/memory/store.py
+    problem_statement: Every action is traceable after the fact.
+    params:
+      storage: sqlite                # data/jarvis.db on a Railway volume
+      log_fields:
+        - timestamp
+        - order_text_redacted
+        - tier_used
+        - model_id
+        - tokens_in
+        - tokens_out
+        - cost_usd
+        - action
+        - approval_status
+        - result
+      redaction_before_write: true   # R2 runs before every log write
+      retention_days: 180
+    review_date: 2027-01-23

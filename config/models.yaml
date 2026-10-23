@@ -1,0 +1,49 @@
+# config/models.yaml
+# The ONLY place model endpoints and IDs are defined.
+# Moving to local (Mac Studio + Ollama) = change provider below, no code change.
+# Changes require TT approval (rules.yaml R1: modify_config).
+
+version: 1
+
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    enabled: true
+  ollama:                          # future: Mac Studio
+    base_url: http://localhost:11434/v1
+    api_key_env: null
+    enabled: false
+
+# VERIFY every model ID on openrouter.ai/models before first run.
+# IDs below are placeholders in the correct format.
+tiers:
+  cheap:                           # default: chat, classify, summarise
+    provider: openrouter
+    model: google/gemini-flash-lite        # VERIFY exact current slug
+    max_tokens: 1000
+    temperature: 0.3
+  standard:                        # reasoning, code review, harder questions
+    provider: openrouter
+    model: anthropic/claude-sonnet-5.5     # VERIFY exact current slug
+    max_tokens: 2000
+    temperature: 0.3
+  premium:                         # disabled in v1; enable only with TT approval
+    provider: openrouter
+    model: anthropic/claude-opus-5.5       # VERIFY exact current slug
+    max_tokens: 4000
+    temperature: 0.3
+    enabled: false
+  local:                           # placeholder for Mac Studio phase
+    provider: ollama
+    model: TBD
+    enabled: false
+
+routing:
+  default_tier: cheap
+  manual_override_prefixes:        # v1 routing is explicit, not AI-decided
+    "!deep": standard
+  fallback:
+    on_error: retry_once_same_tier
+    then: reply_with_error         # never silently escalate to a pricier tier
+  request_timeout_seconds: 60
